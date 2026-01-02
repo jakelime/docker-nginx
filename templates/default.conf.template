@@ -1,24 +1,4 @@
 # Caching
-proxy_cache_path /var/cache/nginx/gitbucket_cache levels=1:2 keys_zone=cache:10m max_size=1g inactive=60m use_temp_path=off;
-
-# Top-level HTTP config for WebSocket headers
-# If Upgrade is defined, Connection = upgrade
-# If Upgrade is empty, Connection = close
-map $http_upgrade $connection_upgrade {
-    default upgrade;
-    ''      close;
-}
-
-# Upstream application servers
-# Do not create too many upstream maps that
-# do not require load balancing or re-use.
-upstream jetforge_servers {
-    server jetforge:${JETFORGE_PORT};
-}
-upstream gitbucket_servers {
-    server gitbucket:${GITBUCKET_PORT};
-}
-
 
 # Server block for HTTP traffic
 server {
@@ -105,26 +85,7 @@ server {
         expires 30d;
         autoindex off;
     }
-    location /media/webdocs/ {
-        alias ${NGINX_MEDIA_FOLDER}webdocs/;
-        add_header 'Access-Control-Allow-Origin' '*';
-        autoindex on;
-    }
-    location /media/filebucket/ {
-        # filebucket is our own implementation of aws S3
-        # API can connect into this to manage buckets and filesharing
-        alias ${NGINX_MEDIA_FOLDER}filebucket/;
-        autoindex on;
-        expires 30d;
-    }
-    location /media/databucket/ {
-        # databucket is similar to filebucket, except that it is non-indexed
-        # keep files here with url hashes, some minimum security without login
-        # credentials.
-        alias ${NGINX_MEDIA_FOLDER}databucket/;
-        autoindex off;
-        expires 30d;
-    }
+
     location /media/ {
         autoindex off;
         alias ${NGINX_MEDIA_FOLDER};
@@ -132,59 +93,7 @@ server {
         add_header Cache-Control "public, no-transform";
         access_log off;
     }
-    location /icws/api/ {
-        proxy_pass http://epft_be:${ICWS_EPFT_BE_PORT}/icws/api/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
 
-        proxy_connect_timeout 600s;
-        proxy_send_timeout 600s;
-        proxy_read_timeout 600s;
-        proxy_buffers 4 32k;
-        client_max_body_size 500m;
-        client_body_buffer_size 128k;
-
-        # Add CORS headers
-        add_header 'Access-Control-Allow-Origin' '*';
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
-        add_header 'Access-Control-Allow-Headers' 'Content-Type, Authorization';
-    }
-
-    location /icws/ {
-        proxy_pass http://epft_fe:${ICWS_EPFT_FE_PORT}/;
-        # Standard Proxy Headers
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        # Timeouts and Buffers
-        proxy_connect_timeout 600s;
-        proxy_send_timeout 600s;
-        proxy_read_timeout 600s;
-        proxy_buffers 4 32k;
-        client_max_body_size 500m;
-        client_body_buffer_size 128k;
-        # CORS
-        add_header 'Access-Control-Allow-Origin' '*';
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
-        add_header 'Access-Control-Allow-Headers' 'Content-Type, Authorization';
-    }
-    location /jetforge3/ {
-        proxy_pass http://jetforge3:${JETFORGE3_PORT}/;
-
-        # Standard headers
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        client_max_body_size 200m;
-        client_body_buffer_size 128k;
-        # Headers for WebSocket support
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-    }
     location /jupyterhub/ {
         proxy_pass http://jupyterhub:${JUPYTERHUB_UI_PORT};
         # note that jupyterhub:`PORT` here do not end with/
@@ -204,81 +113,6 @@ server {
         proxy_read_timeout 86400;
         proxy_send_timeout 86400;
     }
-    location /materials/core/ {
-        # Django application
-        # Take note of the trailing slash in both location and proxy_pass
-        # nginx will strip the /app2/ prefix before passing the request to the backend
-        # django will then prepend /app2 to all its URLs with FORCE_SCRIPT_NAME=/app2
-        proxy_pass http://matr_core:${MATR_CORE_PORT}/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        # File upload support
-        client_max_body_size 50m;
-        client_body_buffer_size 128k;
-    }
-    location /materials/api/v1 {
-        proxy_pass http://matr_be:${MATR_BE_PORT}/materials/api/v1;
-
-        # Standard proxy headers
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-
-        # API-specific settings (long timeouts for file uploads)
-        proxy_connect_timeout 600s;
-        proxy_send_timeout 600s;
-        proxy_read_timeout 600s;
-        proxy_buffers 4 32k;
-        client_max_body_size 500m;
-        client_body_buffer_size 128k;
-    }
-    location /materials/ {
-        # Donet Blazor Configuration
-        proxy_pass http://matr_fe:${MATR_FE_PORT};
-
-        # HTTP/1.1 for WebSocket
-        proxy_http_version 1.1;
-
-        # CRITICAL: All forwarded headers for path base support
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-
-        # Blazor SignalR/WebSocket support
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_cache_bypass $http_upgrade;
-
-        # Standard timeouts
-        proxy_connect_timeout 300s;
-        proxy_send_timeout 300s;
-        proxy_read_timeout 300s;
-
-        # Ingress mutation doesn't set X-Forwarded-Port, so we add it manually
-        proxy_set_header X-Forwarded-Port $server_port;
-    }
-    location / {
-        # Django application
-        # Take note of the trailing slash in both location and proxy_pass
-        # nginx will strip the /app2/ prefix before passing the request to the backend
-        # django will then prepend /app2 to all its URLs with FORCE_SCRIPT_NAME=/app2
-        proxy_pass http://jetforge_servers/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        # File upload support
-        client_max_body_size 200m;
-        client_body_buffer_size 128k;
-    }
-
 
     error_page 500 502 503 504 /50x.html;
     location = /50x.html {
