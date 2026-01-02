@@ -1,5 +1,5 @@
-ARG url_docker=docker.io
-FROM ${url_docker}/nginx:1.29.3-trixie
+ARG URL_DOCKER_INDEX=docker.io
+FROM ${URL_DOCKER_INDEX}/nginx:1.29.3-trixie
 
 # Copy the Nginx configuration file
 COPY ./nginx.conf /etc/nginx/nginx.conf
