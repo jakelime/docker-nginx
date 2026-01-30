@@ -1,0 +1,166 @@
+# Caching
+proxy_cache_path /var/cache/nginx/gitbucket_cache levels=1:2 keys_zone=cache:10m max_size=1g inactive=60m use_temp_path=off;
+
+# Top-level HTTP config for WebSocket headers
+# If Upgrade is defined, Connection = upgrade
+# If Upgrade is empty, Connection = close
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# Upstream application servers
+# Do not create too many upstream maps that
+# do not require load balancing or re-use.
+upstream app0_servers {
+    server app0:${APP0_PORT};
+}
+upstream app1_servers {
+    server app1:${APP1_PORT};
+}
+upstream gitbucket_servers {
+    server gitbucket:${GITBUCKET_PORT};
+}
+
+
+# Server block for HTTP traffic
+server {
+    listen ${NGINX_PORT_HTTP};
+    server_name _;
+
+    # Resolver is required to point to Docker internal DNS
+    resolver 127.0.0.11 valid=30s;
+
+    # GitBucket image can only be served over HTTP
+    location /gitbucket/assets/ {
+        proxy_pass http://gitbucket_servers/gitbucket/assets/;
+        proxy_cache cache;
+        proxy_cache_key $host$uri$is_args$args;
+        proxy_cache_valid 200 301 302 1d;
+        expires 1d;
+    }
+
+    location /gitbucket {
+        proxy_pass http://gitbucket_servers/gitbucket;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_connect_timeout 600;
+        proxy_send_timeout 450;
+        proxy_read_timeout 450;
+        proxy_buffers 4 32k;
+        client_max_body_size 500m; # Big number is we can post big commits.
+        client_body_buffer_size 128k;
+    }
+
+    location / {
+        root /usr/share/nginx/html;
+        # 1. Sets the default file to look for if the user hits the root domain
+        index http-error.html;
+        # 2. Tries to serve the file requested ($uri).
+        #    If not found, it falls back to serving /http-error.html
+        try_files $uri $uri/ /http-error.html;
+    }
+
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
+}
+
+# Server block for HTTPS traffic
+server {
+    listen ${NGINX_PORT_HTTPS} ssl;
+    http2 on;
+    server_name _;
+
+    # SSL certificate configuration
+    ssl_certificate /etc/nginx/certs/nginx.crt;
+    ssl_certificate_key /etc/nginx/certs/nginx.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305';
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    # 2. Add HSTS (Strict Transport Security)
+    # Tells browsers to ONLY use HTTPS for the next year.
+    # Don't implement this until you have working HTTPS and want to force only HTTPS.
+    # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # Resolver is required to point to Docker internal DNS
+    resolver 127.0.0.11 valid=30s;
+
+    # Error pages
+    error_page 404 /404.html;
+    error_page 500 /500.html;
+    error_page 502 /502.html;
+    error_page 503 /503.html;
+    error_page 504 /504.html;
+
+    location ~ ^/(404|500|502|503|504)\.html$ {
+        root /usr/share/nginx/html;
+        internal; # Prevent direct access to error pages
+    }
+
+    location /static/ {
+        alias ${NGINX_STATIC_FOLDER};
+        # Cache Control Header:
+        # - public: allows caching by browsers and CDNs
+        # - no-transform: prevents intermediaries from altering the content
+        add_header Cache-Control "public, no-transform";
+        # Performance optimization:
+        # - access_log off; # Disable access logs for media files
+        # - tcp_nodelay off; # requires sendfile on;
+        access_log off;
+        tcp_nodelay off;
+        expires 30d;
+        autoindex off;
+    }
+
+
+    location /media/ {
+        autoindex off;
+        alias ${NGINX_MEDIA_FOLDER};
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
+        access_log off;
+    }
+
+    location /app1/ {
+        # Django application
+        # Take note of the trailing slash in both location and proxy_pass
+        # nginx will strip the /app2/ prefix before passing the request to the backend
+        # django will then prepend /app2 to all its URLs with FORCE_SCRIPT_NAME=/app2
+        proxy_pass http://app1_servers/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # File upload support
+        client_max_body_size 200m;
+        client_body_buffer_size 128k;
+    }
+
+    location / {
+        # Django application
+        # Take note of the trailing slash in both location and proxy_pass
+        # nginx will strip the /app2/ prefix before passing the request to the backend
+        # django will then prepend /app2 to all its URLs with FORCE_SCRIPT_NAME=/app2
+        proxy_pass http://app0_servers/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # File upload support
+        client_max_body_size 200m;
+        client_body_buffer_size 128k;
+    }
+
+
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
+}
+
