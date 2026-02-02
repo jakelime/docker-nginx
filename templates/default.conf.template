@@ -1,27 +1,10 @@
 # Caching
 proxy_cache_path /var/cache/nginx/gitbucket_cache levels=1:2 keys_zone=cache:10m max_size=1g inactive=60m use_temp_path=off;
 
-# Top-level HTTP config for WebSocket headers
-# If Upgrade is defined, Connection = upgrade
-# If Upgrade is empty, Connection = close
-map $http_upgrade $connection_upgrade {
-    default upgrade;
-    ''      close;
-}
 
-# Upstream application servers
-# Do not create too many upstream maps that
-# do not require load balancing or re-use.
-upstream app0_servers {
-    server app0:${APP0_PORT};
-}
-upstream app1_servers {
-    server app1:${APP1_PORT};
-}
 upstream gitbucket_servers {
     server gitbucket:${GITBUCKET_PORT};
 }
-
 
 # Server block for HTTP traffic
 server {
@@ -126,37 +109,6 @@ server {
         add_header Cache-Control "public, no-transform";
         access_log off;
     }
-
-    location /app1/ {
-        # Django application
-        # Take note of the trailing slash in both location and proxy_pass
-        # nginx will strip the /app2/ prefix before passing the request to the backend
-        # django will then prepend /app2 to all its URLs with FORCE_SCRIPT_NAME=/app2
-        proxy_pass http://app1_servers/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        # File upload support
-        client_max_body_size 200m;
-        client_body_buffer_size 128k;
-    }
-
-    location / {
-        # Django application
-        # Take note of the trailing slash in both location and proxy_pass
-        # nginx will strip the /app2/ prefix before passing the request to the backend
-        # django will then prepend /app2 to all its URLs with FORCE_SCRIPT_NAME=/app2
-        proxy_pass http://app0_servers/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        # File upload support
-        client_max_body_size 200m;
-        client_body_buffer_size 128k;
-    }
-
 
     error_page 500 502 503 504 /50x.html;
     location = /50x.html {
