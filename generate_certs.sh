@@ -1,10 +1,26 @@
 #!/bin/bash
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/.env"
+
+# 0. Load environment variables from .env if it exists
+if [ -f "$ENV_FILE" ]; then
+    echo "Loading environment variables from $ENV_FILE..."
+    # 'set -a' automatically exports all variables defined in the file
+    set -a
+    source "$ENV_FILE"
+    set +a
+else
+    echo "Warning: No .env file found at $ENV_FILE. Using defaults."
+fi
+
+# Configuration Variables
 tmp_file='TEMP.openssl.conf'
-certs_dir="./certs"
+certs_dir="$SCRIPT_DIR/certs"
+
 current_hostname=$(hostname)
 
-# Define your domain suffix here
 DOMAIN_SUFFIX="${DOMAIN_SUFFIX:-myprivatedomain.local}"
 # Construct the Fully Qualified Domain Name (FQDN)
 FQDN="${current_hostname}.${DOMAIN_SUFFIX}"
