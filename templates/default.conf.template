@@ -1,6 +1,5 @@
 # Caching
-proxy_cache_path /var/cache/nginx/gitbucket_cache levels=1:2 keys_zone=cache:10m max_size=1g inactive=60m use_temp_path=off;
-
+proxy_cache_path /var/cache/nginx/gitbucket_cache levels=1:2 keys_zone=cache:512m inactive=1d  max_size=60g;
 
 upstream gitbucket_servers {
     server gitbucket:${GITBUCKET_PORT};
@@ -15,7 +14,7 @@ server {
     resolver 127.0.0.11 valid=30s;
 
     # GitBucket image can only be served over HTTP
-    location /gitbucket/assets/ {
+    location /${GITBUCKET_PREFIX}/assets/ {
         proxy_pass http://gitbucket_servers/gitbucket/assets/;
         proxy_cache cache;
         proxy_cache_key $host$uri$is_args$args;
@@ -23,16 +22,16 @@ server {
         expires 1d;
     }
 
-    location /gitbucket {
-        proxy_pass http://gitbucket_servers/gitbucket;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_connect_timeout 600;
-        proxy_send_timeout 450;
-        proxy_read_timeout 450;
-        proxy_buffers 4 32k;
-        client_max_body_size 500m; # Big number is we can post big commits.
+    location /${GITBUCKET_PREFIX}/ {
+        proxy_pass              http://gitbucket_servers/${GITBUCKET_PREFIX}/;
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_connect_timeout   150;
+        proxy_send_timeout      100;
+        proxy_read_timeout      100;
+        proxy_buffers           4 32k;
+        client_max_body_size    500m; # Big number is we can post big commits.
         client_body_buffer_size 128k;
     }
 
