@@ -10,6 +10,13 @@ provide reverse-proxy service to the backend application layers and/or database 
 This deployments uses self-signed HTTPS certificate. The builder script will generate
 a self-signed certificate for deployment.
 
+## Quickstart
+
+1. Referring to `.env.example`, create `.env`.
+1. Run `bash ./generate_certs.sh`
+1. That's it for submodule setup.
+1. Go up to `./docker-compose.yml` root and run `docker compose up` from there.
+
 ## Folder Structure
 
 ```text
